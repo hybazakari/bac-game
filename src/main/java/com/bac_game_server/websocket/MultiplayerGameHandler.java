@@ -194,7 +194,9 @@ public class MultiplayerGameHandler implements WebSocketHandler {
         gameStarted.put("totalRounds", numberOfRounds);
         gameStarted.set("categories", objectMapper.valueToTree(categories));
         
+        logger.info("Broadcasting GAME_STARTED to all players in session {}: {}", sessionId, gameStarted.toString());
         broadcastToSession(sessionId, gameStarted);
+        logger.info("GAME_STARTED broadcast completed for session {}", sessionId);
         
         // Start round timer
         startRoundTimer(sessionId, roundDuration * 1000);
@@ -431,17 +433,30 @@ public class MultiplayerGameHandler implements WebSocketHandler {
 
     private void broadcastToSession(String sessionId, ObjectNode message, WebSocketSession exclude) {
         List<WebSocketSession> sessions = sessionConnections.get(sessionId);
+        logger.info("Broadcasting message type {} to session {} ({} total sessions)", 
+                   message.get("type"), sessionId, sessions != null ? sessions.size() : 0);
+        
         if (sessions != null) {
             TextMessage textMessage = new TextMessage(message.toString());
-            sessions.forEach(session -> {
+            int successCount = 0;
+            for (WebSocketSession session : sessions) {
                 if (!session.equals(exclude) && session.isOpen()) {
                     try {
                         session.sendMessage(textMessage);
+                        successCount++;
+                        logger.debug("Sent message to session {}", session.getId());
                     } catch (IOException e) {
                         logger.error("Error sending message to session {}", session.getId(), e);
                     }
+                } else {
+                    logger.debug("Skipped session {} (excluded: {}, open: {})", 
+                               session.getId(), session.equals(exclude), session.isOpen());
                 }
-            });
+            }
+            logger.info("Message broadcast completed: {} out of {} sessions received the message", 
+                       successCount, sessions.size());
+        } else {
+            logger.warn("No sessions found for session ID {}", sessionId);
         }
     }
 
